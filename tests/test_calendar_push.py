@@ -42,7 +42,7 @@ def test_push_writes_deterministic_ics_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(calendar_push, "FALLBACK_DIR", fallback_dir)
     monkeypatch.setattr(calendar_push.subprocess, "run", _fail)
 
-    result = calendar_push.push(page)
+    result = calendar_push.push(page, backend="apple")
 
     ics_path = fallback_dir / "44492178-20260623T1500.ics"
     assert result == f"fallback: wrote .ics to {ics_path} (Apple Calendar automation unavailable)"
@@ -64,9 +64,42 @@ def test_push_reuses_existing_ics_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(calendar_push, "FALLBACK_DIR", fallback_dir)
     monkeypatch.setattr(calendar_push.subprocess, "run", _fail)
 
-    first = calendar_push.push(page)
-    second = calendar_push.push(page)
+    first = calendar_push.push(page, backend="apple")
+    second = calendar_push.push(page, backend="apple")
 
     ics_path = fallback_dir / "44492178-20260623T1500.ics"
     assert first == f"fallback: wrote .ics to {ics_path} (Apple Calendar automation unavailable)"
     assert second == f"fallback: .ics already exists at {ics_path} (Apple Calendar automation unavailable)"
+
+
+def test_push_google_backend_uses_injected_creator(tmp_path):
+    page = _page(tmp_path, "44492178", "Brasemstraat 35", "2026-06-23T15:00")
+    seen = {}
+
+    def fake_creator(**kwargs):
+        seen.update(kwargs)
+        return "created: evt_abc123"
+
+    result = calendar_push.push(page, backend="google", google_creator=fake_creator)
+
+    assert result == "created: evt_abc123"
+    assert seen["summary"] == "🏠 Viewing — Brasemstraat 35, Tilburg"
+    assert seen["location"] == "Brasemstraat 35, Tilburg"
+    assert seen["marker"] == "[house-tracker:44492178]"
+    assert seen["start"].isoformat() == "2026-06-23T15:00:00"
+    assert seen["end"].isoformat() == "2026-06-23T15:30:00"
+
+
+def test_push_google_backend_falls_back_to_ics_on_error(tmp_path, monkeypatch):
+    page = _page(tmp_path, "44492178", "Brasemstraat 35", "2026-06-23T15:00")
+    fallback_dir = tmp_path / "calendar-imports"
+    monkeypatch.setattr(calendar_push, "FALLBACK_DIR", fallback_dir)
+
+    def boom(**kwargs):
+        raise RuntimeError("connector down")
+
+    result = calendar_push.push(page, backend="google", google_creator=boom)
+
+    ics_path = fallback_dir / "44492178-20260623T1500.ics"
+    assert result == f"fallback: wrote .ics to {ics_path} (Google Calendar unavailable)"
+    assert ics_path.exists()

@@ -1,14 +1,16 @@
-"""Pushes a booked viewing into Apple Calendar via osascript.
+"""Pushes a booked viewing into a calendar.
 
-Idempotent: re-running on the same viewing finds the existing event (matched by
-funda_id baked into the description) and does nothing. Safe to call from gmail-sync
-on every run.
+Two backends: Apple Calendar via osascript (macOS dev box) and Google Calendar via
+the Claude calendar connector (the Ubuntu prod box). Idempotent on both: re-running
+on the same viewing finds the existing event (matched by a `[house-tracker:<id>]`
+marker baked into the description) and does nothing. Safe to call on every run.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -21,10 +23,19 @@ import yaml
 log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
-CALENDAR_NAME = "Домашній"  # writable calendar to receive viewings
+CALENDAR_NAME = "Домашній"  # Apple calendar name (macOS dev box)
 DEFAULT_DURATION_MIN = 30
 DEFAULT_TIMEZONE = "Europe/Amsterdam"
 FALLBACK_DIR = ROOT / "logs" / "calendar-imports"
+CAL_CLAUDE_TIMEOUT = 180  # seconds for the claude calendar call
+
+
+def _default_backend() -> str:
+    """Apple Calendar on macOS (dev); Google Calendar (via claude connector) elsewhere."""
+    env = os.environ.get("CALENDAR_BACKEND")
+    if env:
+        return env.strip().lower()
+    return "apple" if sys.platform == "darwin" else "google"
 
 
 def _frontmatter(path: Path) -> dict:
@@ -180,8 +191,41 @@ def _write_fallback_ics(*, funda_id: str, summary: str, location: str,
     return f"fallback: wrote .ics to {path}"
 
 
+def _google_create_event(*, summary: str, location: str, description: str,
+                         start: datetime, end: datetime, marker: str) -> str:
+    """Create the event on Google's primary calendar via the Claude calendar connector.
+
+    Idempotent: instructs Claude to skip if an event carrying `marker` already exists
+    that day. Returns a short status line ('created: <id>' or 'skip: exists').
+    """
+    claude_bin = os.environ.get("CLAUDE_BIN") or "claude"
+    tz = DEFAULT_TIMEZONE
+    prompt = (
+        "Use the Google Calendar tool on my primary calendar. Reply with ONE line only.\n"
+        f'1) Search events on {start.date().isoformat()} whose description contains the '
+        f'exact text "{marker}". If one exists, reply exactly: skip: exists\n'
+        "2) Otherwise create one event with:\n"
+        f"   title: {summary}\n"
+        f"   location: {location}\n"
+        f"   description: {description}\n"
+        f"   start: {start.strftime('%Y-%m-%dT%H:%M:%S')} ({tz})\n"
+        f"   end: {end.strftime('%Y-%m-%dT%H:%M:%S')} ({tz})\n"
+        "   then reply exactly: created: <eventId>\n"
+        "Output only that one line, nothing else."
+    )
+    proc = subprocess.run(
+        [claude_bin, "-p", "--permission-mode", "bypassPermissions", "--model", "sonnet"],
+        input=prompt, capture_output=True, text=True, timeout=CAL_CLAUDE_TIMEOUT,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude calendar failed: {(proc.stderr or proc.stdout).strip()[-300:]}")
+    lines = [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
+    return lines[-1] if lines else "calendar: empty response"
+
+
 def push(page_path: Path, *, duration_min: int = DEFAULT_DURATION_MIN,
-         calendar: str = CALENDAR_NAME) -> str:
+         calendar: str = CALENDAR_NAME, backend: str | None = None,
+         google_creator=None) -> str:
     fm = _frontmatter(page_path)
     viewing_at = _parse_viewing_at(fm.get("viewing_at"))
     if not viewing_at:
@@ -202,6 +246,22 @@ def push(page_path: Path, *, duration_min: int = DEFAULT_DURATION_MIN,
     description = "\n".join(p for p in description_parts if p)
 
     end = viewing_at + timedelta(minutes=duration_min)
+
+    if (backend or _default_backend()) == "google":
+        creator = google_creator or _google_create_event
+        try:
+            return creator(
+                summary=summary, location=location, description=description,
+                start=viewing_at, end=end, marker=marker,
+            )
+        except Exception as exc:  # noqa: BLE001 - fallback is intentional here
+            log.warning("Google Calendar push failed for %s: %s", page_path.name, exc)
+            fallback = _write_fallback_ics(
+                funda_id=funda_id, summary=summary, location=location,
+                description=description, start=viewing_at, end=end,
+            )
+            return f"{fallback} (Google Calendar unavailable)"
+
     script = _build_script(
         summary=summary, location=location, description=description,
         start=viewing_at, end=end, calendar=calendar, marker=marker,
@@ -234,10 +294,13 @@ def main() -> int:
                         help=f"event length in minutes (default {DEFAULT_DURATION_MIN})")
     parser.add_argument("--calendar", default=CALENDAR_NAME,
                         help=f"target calendar name (default '{CALENDAR_NAME}')")
+    parser.add_argument("--backend", choices=["apple", "google"], default=None,
+                        help="calendar backend (default: apple on macOS, google elsewhere)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    msg = push(Path(args.page), duration_min=args.duration, calendar=args.calendar)
+    msg = push(Path(args.page), duration_min=args.duration, calendar=args.calendar,
+               backend=args.backend)
     print(msg)
     return 0
 
