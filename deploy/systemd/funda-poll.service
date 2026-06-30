@@ -1,0 +1,10 @@
+[Unit]
+Description=Funda tracker — poll Funda for new listings (one run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/funda/funda.env
+WorkingDirectory=%h/house
+ExecStart=%h/house/.venv/bin/python3 %h/house/run.py

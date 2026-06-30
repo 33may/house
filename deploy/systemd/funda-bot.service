@@ -1,0 +1,17 @@
+[Unit]
+Description=Funda — Telegram bot listener (chat + auto-applier)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/funda/funda.env
+WorkingDirectory=%h/house
+ExecStart=%h/house/.venv/bin/python3 -m funda_tracker.telegram_bot
+Restart=always
+RestartSec=10
+# Backoff so a crash-loop doesn't burn CPU.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Install]
+WantedBy=default.target

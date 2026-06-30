@@ -11,16 +11,18 @@
 # logs/gmail-sync-message.txt when it changed the vault; a failed run sends an alert.
 
 set -u
-export PATH="/Users/may/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+# Portable PATH: user-local bins first, then Homebrew (mac) / system (linux), then inherited.
+export PATH="$HOME/.local/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
-PROJECT="/Users/may/Documents/may/house"
+# PROJECT: env override (set by the box's funda.env) else the dir this script lives in.
+PROJECT="${FUNDA_PROJECT:-$(cd "$(dirname "$0")" && pwd)}"
 STAMP="$PROJECT/logs/gmail-sync.last"          # unix epoch of last successful sync
 LOG="$PROJECT/logs/gmail-sync.log"
 RUNLOG="$PROJECT/logs/gmail-sync-run.tmp"
 RUNRAW="$PROJECT/logs/gmail-sync-raw.tmp"
 MSG="$PROJECT/logs/gmail-sync-message.txt"     # Telegram echo written by the Codex prompt
 MIN_GAP=21600                                  # 6 hours, in seconds
-CLAUDE="/Users/may/.local/bin/claude"
+CLAUDE="${CLAUDE_BIN:-$(command -v claude || echo "$HOME/.local/bin/claude")}"
 MODEL="sonnet"                                 # Anthropic model that runs the sync
 PROMPT="$PROJECT/.claude/prompts/gmail-sync.md"
 VENV_PY="$PROJECT/.venv/bin/python3"

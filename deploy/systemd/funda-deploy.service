@@ -1,0 +1,10 @@
+[Unit]
+Description=Funda — git deploy loop (pull origin/main, test, restart on green)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/funda/funda.env
+WorkingDirectory=%h/house
+ExecStart=/usr/bin/bash %h/house/deploy/deploy.sh

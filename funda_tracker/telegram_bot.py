@@ -41,7 +41,7 @@ TELEGRAM_MAX_LEN = 3900  # under 4096 to leave headroom
 CODEX_TIMEOUT = 600  # seconds per request; long enough for tool-heavy work
 CODEX_MODEL = "gpt-5.4"
 
-SYSTEM_PROMPT = """You are the house-hunt assistant for the user's Funda tracker at /Users/may/Documents/may/house.
+SYSTEM_PROMPT = f"""You are the house-hunt assistant for the user's Funda tracker at {ROOT}.
 
 Context:
 - The user (Anton) is house-hunting in the Netherlands: Tilburg, Eindhoven, Boxtel, Best, ≤€350k.

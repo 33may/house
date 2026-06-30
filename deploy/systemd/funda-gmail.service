@@ -1,0 +1,10 @@
+[Unit]
+Description=Funda — Gmail broker-email sync (throttled to one real run / 6h)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/funda/funda.env
+WorkingDirectory=%h/house
+ExecStart=/usr/bin/zsh %h/house/gmail-sync.sh
