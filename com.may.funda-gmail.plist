@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.may.funda-gmail</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>/Users/may/Documents/may/house/gmail-sync.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/may/Documents/may/house</string>
+
+    <!-- Fires at login and every 6 hours. launchd also runs a missed interval
+         once shortly after the Mac wakes from sleep, so this triggers soon after
+         the laptop is opened. gmail-sync.sh itself throttles to one real sync / 6h. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>21600</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/may/Documents/may/house/logs/gmail-sync.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/may/Documents/may/house/logs/gmail-sync.err.log</string>
+</dict>
+</plist>

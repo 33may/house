@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.may.funda-bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/may/Documents/may/house/.venv/bin/python3</string>
+        <string>-m</string>
+        <string>funda_tracker.telegram_bot</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/may/Documents/may/house</string>
+
+    <!-- Long-lived listener: relaunch immediately if it crashes/exits. -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Backoff after a crash so a broken state doesn't burn the CPU. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Inherit PATH so the `codex` binary is discoverable. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/may/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/may/Documents/may/house/logs/telegram-bot.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/may/Documents/may/house/logs/telegram-bot.err.log</string>
+</dict>
+</plist>

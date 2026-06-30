@@ -1,0 +1,32 @@
+# --- Python / runtime (box-only) ---
+.venv/
+logs/
+state.json
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Secrets (NEVER commit) ---
+secrets.yaml
+config/funda.env
+
+# --- Playwright / browser profile (DataDome-cleared, box-only) ---
+.playwright-mcp/
+# Chrome user-data profile lives under logs/ (already ignored) — keep it out regardless:
+funda-profile/
+
+# --- Obsidian Sync-owned house data (box-only, not git) ---
+/houses/
+/daily/
+/meetings/
+/sessions/
+/tasks/
+/Houses Board.md
+/Today outreach *.md
+
+# --- Agent-private memory ---
+.agent-memory/
+.remember/
+
+# --- macOS / editor cruft ---
+.DS_Store

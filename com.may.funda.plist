@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.may.funda</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/may/Documents/may/house/.venv/bin/python3</string>
+        <string>/Users/may/Documents/may/house/run.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/may/Documents/may/house</string>
+
+    <!-- Poll every 20 minutes (1200s). Does not run while the Mac is asleep. -->
+    <key>StartInterval</key>
+    <integer>1200</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/may/Documents/may/house/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/may/Documents/may/house/logs/launchd.err.log</string>
+</dict>
+</plist>

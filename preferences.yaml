@@ -1,0 +1,46 @@
+# ─────────────────────────────────────────────────────────────
+# Funda house-hunt tracker — search preferences
+# Edit this file; the next run picks it up automatically (no restart).
+# ─────────────────────────────────────────────────────────────
+
+# Shared defaults for every search below. location and max_price live per-city
+# in `searches:` so each city gets its own price cap.
+search:
+  category: buy             # buy | rent
+  radius_km: null           # disabled — radius only works with a single location
+  min_price: null           # euros, or null for no minimum
+  min_area: null            # living area m², or null
+  max_area: null
+  min_rooms: null           # or null
+  min_bedrooms: null        # or null
+  object_type:              # houses only — apartments excluded
+    - house
+  energy_label: null        # null = any. Or a list: ["A", "B", "C"]
+  sort: newest              # leave as newest — the tracker depends on it
+
+# ── Per-city searches ────────────────────────────────────────
+# Each entry is merged over `search` above (its keys win) and runs as its OWN
+# Funda query. This gives every city an independent price cap and its own
+# newest-N scan, so a busy city can't crowd a quiet one out of the results.
+searches:
+  - location: [Tilburg]
+    max_price: 350000
+  - location: [Eindhoven]
+    max_price: 450000
+  - location: [Best]
+    max_price: 350000
+  - location: [Boxtel]
+    max_price: 350000
+
+# ── Local filters ────────────────────────────────────────────
+# Applied AFTER fetching, on detail data Funda's search API can't filter on.
+# Valid feature keys: has_garden, has_balcony, has_roof_terrace, has_solar_panels,
+# has_heat_pump, has_parking_on_site, has_parking_enclosed, is_energy_efficient,
+# is_monument, is_fixer_upper
+require_features: []        # listing must have ALL of these
+exclude_features: []        # listing must have NONE of these
+
+# ── Polling ──────────────────────────────────────────────────
+poll:
+  pages: 2                  # pages of 15 listings scanned per run (newest first).
+                            # 2 = newest 30. Raise if listings arrive faster than you poll.
