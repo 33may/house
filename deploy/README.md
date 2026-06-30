@@ -67,3 +67,5 @@ tail -f ~/house/logs/deploy.log           # deploy decisions + alerts
 
 A failed test run on a push **does not** take the tool dark: `deploy.sh` reverts the
 working tree to the last-good commit, leaves services running, and sends a Telegram alert.
+
+<!-- deploy pipeline verified live on maylenovo 2026-06-30 -->
