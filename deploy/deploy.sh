@@ -34,9 +34,10 @@ fi
 log "new commit $REMOTE (was $LOCAL) — deploying"
 git pull -q --ff-only origin "$BRANCH" || { log "ff-only pull failed — manual fix needed"; notify "⚠️ Funda deploy: fast-forward pull failed on the box. Manual fix needed."; exit 1; }
 
-# Sync venv + deps.
+# Sync venv + deps (runtime + the test-gate deps).
 [ -d .venv ] || python3 -m venv .venv
 ./.venv/bin/pip install -q -r requirements.txt >> "$LOG" 2>&1
+[ -f requirements-dev.txt ] && ./.venv/bin/pip install -q -r requirements-dev.txt >> "$LOG" 2>&1
 
 # TEST GATE — the only thing standing between a push and the live services.
 if ! "$PY" -m pytest -q >> "$LOG" 2>&1; then

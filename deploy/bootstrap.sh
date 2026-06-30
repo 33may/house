@@ -34,6 +34,7 @@ echo "==> 4/8 python venv + deps"
 [ -d .venv ] || python3 -m venv .venv
 ./.venv/bin/pip install -q --upgrade pip
 ./.venv/bin/pip install -q -r requirements.txt
+[ -f requirements-dev.txt ] && ./.venv/bin/pip install -q -r requirements-dev.txt
 ./.venv/bin/python -m playwright install-deps chromium 2>/dev/null || true
 
 echo "==> 5/8 box env file"

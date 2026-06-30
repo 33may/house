@@ -1,0 +1,3 @@
+# Dev/test-only deps. Installed on the box too, because the deploy loop's
+# test gate (deploy/deploy.sh) runs pytest before restarting services.
+pytest
