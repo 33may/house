@@ -1,9 +1,9 @@
-"""Telegram bot that dispatches each incoming message to a Codex session.
+"""Telegram bot that dispatches each incoming message to a Claude session.
 
-Long-polls Telegram. Each message reaches Codex with the house-tracker system
-prompt pre-loaded. Sessions live for `SESSION_TTL` — within that window, follow-up
-messages resume the same Codex thread and share its full memory of the chat.
-After the TTL expires, the next message spawns a fresh session.
+Long-polls Telegram. Each message reaches the Claude CLI with the house-tracker
+system prompt pre-loaded. Sessions live for `SESSION_TTL` — within that window,
+follow-up messages resume the same Claude session (via --resume) and share its
+full memory of the chat. After the TTL expires, the next message starts fresh.
 
 Single-user: only the chat id configured in secrets.yaml as `telegram_chat_id` can
 talk to the bot; messages from any other chat are ignored.
@@ -38,8 +38,8 @@ OFFSET_PATH = STATE_DIR / "telegram-offset.json"
 SESSION_TTL = timedelta(hours=1)
 LONG_POLL_TIMEOUT = 25  # seconds — Telegram holds the connection up to this long
 TELEGRAM_MAX_LEN = 3900  # under 4096 to leave headroom
-CODEX_TIMEOUT = 600  # seconds per request; long enough for tool-heavy work
-CODEX_MODEL = "gpt-5.4"
+CLAUDE_TIMEOUT = 600  # seconds per request; long enough for tool-heavy work
+CLAUDE_MODEL = "sonnet"  # Anthropic model that answers chats
 
 SYSTEM_PROMPT = f"""You are the house-hunt assistant for the user's Funda tracker at {ROOT}.
 
@@ -50,7 +50,7 @@ Context:
 - Gmail sync (slash command /gmail-sync) updates pages from broker email.
 - Apple Calendar push happens automatically on 📅 Viewing booked via `funda_tracker.calendar_push`.
 - The user texts you from their phone via Telegram. Keep replies SHORT (1–4 sentences), plain text, no markdown, no headers, no bullet points. Telegram does not render markdown.
-- You are running under Codex CLI with workspace-write access. Be decisive. Do not stack clarifying questions; if you truly need one, ask just one.
+- You are running under the Claude CLI with file access to the project. Be decisive. Do not stack clarifying questions; if you truly need one, ask just one.
 - When you change the vault, end with a one-line confirmation of what you did.
 """
 
@@ -77,23 +77,23 @@ def _load_session() -> dict | None:
         return None
 
 
-def _save_session(thread_id: str, created_at: datetime) -> None:
+def _save_session(session_id: str, created_at: datetime) -> None:
     SESSION_PATH.write_text(json.dumps(
-        {"provider": "codex", "thread_id": thread_id, "created_at": created_at.isoformat()}, indent=2,
+        {"provider": "claude", "session_id": session_id, "created_at": created_at.isoformat()}, indent=2,
     ))
 
 
-def _active_thread_id() -> str | None:
-    """Return the Codex thread id if a valid (un-expired) session exists."""
+def _active_session_id() -> str | None:
+    """Return the Claude session id if a valid (un-expired) session exists."""
     s = _load_session()
     if not s:
         return None
     try:
-        if s.get("provider") != "codex":
+        if s.get("provider") != "claude":
             return None
         created_at = datetime.fromisoformat(s["created_at"])
         if datetime.now(timezone.utc) - created_at < SESSION_TTL:
-            return s["thread_id"]
+            return s["session_id"]
     except (KeyError, ValueError):
         pass
     return None
@@ -152,7 +152,7 @@ def _send_typing(token: str, chat_id: str) -> None:
 
 def _send_text(token: str, chat_id: str, text: str) -> None:
     """Send (chunked if needed) plain-text response back to the chat."""
-    text = (text or "").strip() or "(empty response from Codex)"
+    text = (text or "").strip() or "(empty response)"
     chunks = [text[i:i + TELEGRAM_MAX_LEN] for i in range(0, len(text), TELEGRAM_MAX_LEN)]
     url = f"{API}/bot{token}/sendMessage"
     for chunk in chunks:
@@ -165,73 +165,72 @@ def _send_text(token: str, chat_id: str, text: str) -> None:
             log.warning("telegram: sendMessage failed: %s", e)
 
 
-# --- codex dispatch --------------------------------------------------------
+# --- claude dispatch -------------------------------------------------------
 
-def _parse_codex_events(stdout: str, thread_id: str | None) -> tuple[str, str | None]:
-    """Parse Codex JSONL events and return the last agent message plus thread id."""
-    reply = ""
-    fallback_lines: list[str] = []
-    for line in stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            fallback_lines.append(line)
-            continue
+def _parse_claude_json(stdout: str, session_id: str | None) -> tuple[str, str | None]:
+    """Parse `claude -p --output-format json` output (a single result object).
 
-        if event.get("type") == "thread.started":
-            thread_id = event.get("thread_id") or thread_id
-
-        item = event.get("item") or {}
-        if event.get("type") == "item.completed" and item.get("type") == "agent_message":
-            reply = (item.get("text") or "").strip() or reply
-
-    return reply or "\n".join(fallback_lines).strip(), thread_id
-
-
-def _run_codex(user_msg: str) -> tuple[str, str | None]:
-    """Run codex exec with either a resumed thread or a fresh one.
-
-    Returns (reply_text, thread_id). Refreshes session state on the way out.
+    Returns (reply_text, session_id). Falls back to raw text if it isn't the
+    expected JSON, and tolerates leading log noise by scanning for the JSON line.
     """
-    thread_id = _active_thread_id()
-    base_cmd = [
-        "codex", "--ask-for-approval", "never", "exec",
-        "--cd", str(ROOT),
-        "--sandbox", "workspace-write",
+    stdout = (stdout or "").strip()
+    if not stdout:
+        return "", session_id
+
+    obj = None
+    try:
+        obj = json.loads(stdout)
+    except json.JSONDecodeError:
+        for line in reversed(stdout.splitlines()):
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    obj = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    continue
+    if obj is None:
+        return stdout, session_id
+
+    reply = (obj.get("result") or "").strip()
+    sid = obj.get("session_id") or session_id
+    return reply, sid
+
+
+def _run_claude(user_msg: str) -> tuple[str, str | None]:
+    """Run `claude -p` with either a resumed session or a fresh one.
+
+    The new user message is fed on stdin; on a fresh session the house-hunt
+    SYSTEM_PROMPT is appended. Returns (reply_text, session_id).
+    """
+    session_id = _active_session_id()
+    cmd = [
+        "claude", "-p",
+        "--model", CLAUDE_MODEL,
+        "--output-format", "json",
+        "--permission-mode", "bypassPermissions",
     ]
-    if thread_id:
-        cmd = [
-            *base_cmd,
-            "resume", "--skip-git-repo-check", "-m", CODEX_MODEL, "--json", thread_id, "-",
-        ]
-        prompt = user_msg
-        log.info("resuming Codex thread %s", thread_id)
+    if session_id:
+        cmd += ["--resume", session_id]
+        log.info("resuming Claude session %s", session_id)
     else:
-        cmd = [
-            *base_cmd,
-            "--skip-git-repo-check", "-m", CODEX_MODEL, "--json", "-",
-        ]
-        prompt = f"{SYSTEM_PROMPT}\n\nUser message:\n{user_msg}"
-        log.info("starting new Codex thread")
+        cmd += ["--append-system-prompt", SYSTEM_PROMPT]
+        log.info("starting new Claude session")
 
     try:
         proc = subprocess.run(
-            cmd, cwd=ROOT, input=prompt, capture_output=True, text=True, timeout=CODEX_TIMEOUT,
+            cmd, cwd=ROOT, input=user_msg, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        return ("⏱️ Codex session timed out after "
-                f"{CODEX_TIMEOUT // 60} min. Try a smaller ask."), thread_id
+        return ("⏱️ Claude timed out after "
+                f"{CLAUDE_TIMEOUT // 60} min. Try a smaller ask."), session_id
 
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout).strip()
-        log.warning("codex exited %d: %s", proc.returncode, err[-500:])
-        return f"⚠️ Codex error: {err[-500:]}", thread_id
+        log.warning("claude exited %d: %s", proc.returncode, err[-500:])
+        return f"⚠️ Claude error: {err[-500:]}", session_id
 
-    reply, thread_id = _parse_codex_events(proc.stdout, thread_id)
-    return reply, thread_id
+    return _parse_claude_json(proc.stdout, session_id)
 
 
 # --- main loop -------------------------------------------------------------
@@ -265,7 +264,7 @@ def main() -> int:
             _send_typing(token, chat_id)
 
             # "apply to <address>" runs the deterministic Funda submitter directly —
-            # no LLM needed. Everything else falls through to the Codex assistant.
+            # no LLM needed. Everything else falls through to the Claude assistant.
             if apply_command.parse_apply(text) is not None:
                 try:
                     reply = apply_command.handle_apply(text)
@@ -277,20 +276,20 @@ def main() -> int:
                 continue
 
             try:
-                reply, thread_id = _run_codex(text)
+                reply, session_id = _run_claude(text)
             except Exception as e:  # noqa: BLE001
                 log.exception("dispatch failed")
                 _send_text(token, chat_id, f"⚠️ Bot error: {e}")
                 continue
 
-            if thread_id:
-                # Preserve original created_at on resume, refresh on new threads.
+            if session_id:
+                # Preserve original created_at on resume, refresh on new sessions.
                 existing = _load_session()
-                if existing and existing.get("thread_id") == thread_id and _active_thread_id():
+                if existing and existing.get("session_id") == session_id and _active_session_id():
                     created_at = datetime.fromisoformat(existing["created_at"])
                 else:
                     created_at = datetime.now(timezone.utc)
-                _save_session(thread_id, created_at)
+                _save_session(session_id, created_at)
 
             _send_text(token, chat_id, reply)
             log.info("< sent %d chars", len(reply))
