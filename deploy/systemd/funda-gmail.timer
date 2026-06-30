@@ -1,9 +1,9 @@
 [Unit]
-Description=Trigger the Funda Gmail sync every 6 hours
+Description=Trigger the Funda Gmail sync every 3 hours
 
 [Timer]
 OnBootSec=5min
-OnUnitActiveSec=6h
+OnUnitActiveSec=3h
 Persistent=true
 
 [Install]

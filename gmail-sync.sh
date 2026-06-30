@@ -1,11 +1,10 @@
 #!/bin/zsh
 # Throttled launcher for the Claude Gmail sync prompt.
 #
-# launchd runs this at login and once every 6 hours — and once shortly after the
-# Mac wakes from sleep (a missed interval fires on wake), i.e. soon after the
-# laptop is opened. This script enforces the real cadence: it starts a sync only
-# if the last successful one was more than 6 hours ago, so opening the lid many
-# times a day stays cheap.
+# Scheduled every 3 hours (systemd timer on the box; launchd on the Mac) — and once
+# shortly after wake (a missed interval fires on wake). This script enforces the real
+# cadence: it starts a sync only if the last successful one was more than 3 hours ago,
+# so extra triggers (boot/wake) stay cheap.
 #
 # After a sync it sends a Telegram echo: the Codex prompt writes one to
 # logs/gmail-sync-message.txt when it changed the vault; a failed run sends an alert.
@@ -21,7 +20,7 @@ LOG="$PROJECT/logs/gmail-sync.log"
 RUNLOG="$PROJECT/logs/gmail-sync-run.tmp"
 RUNRAW="$PROJECT/logs/gmail-sync-raw.tmp"
 MSG="$PROJECT/logs/gmail-sync-message.txt"     # Telegram echo written by the Codex prompt
-MIN_GAP=21600                                  # 6 hours, in seconds
+MIN_GAP=10800                                  # 3 hours, in seconds
 CLAUDE="${CLAUDE_BIN:-$(command -v claude || echo "$HOME/.local/bin/claude")}"
 MODEL="sonnet"                                 # Anthropic model that runs the sync
 PROMPT="$PROJECT/.claude/prompts/gmail-sync.md"

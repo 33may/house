@@ -48,6 +48,8 @@ if ! "$PY" -m pytest -q >> "$LOG" 2>&1; then
 fi
 
 log "tests green — restarting services"
+# Propagate any changed systemd unit files from the repo, then reload.
+cp deploy/systemd/*.service deploy/systemd/*.timer "$HOME/.config/systemd/user/" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user restart funda-bot.service >> "$LOG" 2>&1 || true
 systemctl --user restart funda-poll.timer funda-gmail.timer >> "$LOG" 2>&1 || true
